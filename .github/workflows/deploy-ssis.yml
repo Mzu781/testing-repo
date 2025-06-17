@@ -33,7 +33,7 @@ jobs:
           ping rnsol-197-184-114-37.a.free.pinggy.link
           Test-NetConnection -ComputerName rnsol-197-184-114-37.a.free.pinggy.link -Port 44737
 
-      # Step 6: Deploy using SQL Auth with hardcoded credentials
+      # Step 6: Deploy using SQL Auth with verbose output
       - name: Deploy SSIS Package
         run: |
           SSISDeploy.exe `
@@ -42,4 +42,5 @@ jobs:
             -at:SQL `
             -u:"Auto_user" `
             -p:"SecurePass2025" `
-            -v:Verbose
+            -v:Verbose > deploy_output.txt 2>&1
+          type deploy_output.txt
