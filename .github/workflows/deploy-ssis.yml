@@ -39,6 +39,7 @@ jobs:
       run: |
         $buildToolsPath = "C:\ssis-tools"
         $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
+        $sqlcmdPath = "sqlcmd.exe"
         if (-not (Test-Path "$buildToolsPath\SSISBuild.exe")) {
             Write-Error "SSISBuild.exe not found at: $buildToolsPath"
             exit 1
@@ -47,7 +48,11 @@ jobs:
             Write-Error "dtutil.exe not found at: $dtutilPath"
             exit 1
         }
-        Write-Output "SSIS tools found: SSISBuild.exe at $buildToolsPath, dtutil.exe at $dtutilPath"
+        if (-not (Get-Command $sqlcmdPath -ErrorAction SilentlyContinue)) {
+            Write-Error "sqlcmd.exe not found. Ensure SQL Server tools are installed."
+            exit 1
+        }
+        Write-Output "SSIS tools found: SSISBuild.exe at $buildToolsPath, dtutil.exe at $dtutilPath, sqlcmd.exe in PATH"
       shell: powershell
 
     # Build SSIS Project using SSISBuild.exe
@@ -86,13 +91,16 @@ jobs:
         $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
 
         # Create folder in SSISDB if it doesn't exist
-        & $dtutilPath /SQL "$($env:SSIS_FOLDER)" /EXISTS | Out-Null
+        $sqlQuery = @"
+        IF NOT EXISTS (SELECT 1 FROM SSISDB.catalog.folders WHERE name = '$($env:SSIS_FOLDER)')
+        BEGIN
+            EXEC SSISDB.catalog.create_folder @folder_name = '$($env:SSIS_FOLDER)'
+        END
+        "@
+        sqlcmd -S "$($env:SQL_SERVER)" -d "$($env:SSIS_CATALOG)" -Q "$sqlQuery" -E
         if ($LASTEXITCODE -ne 0) {
-            & $dtutilPath /SQL "$($env:SSIS_FOLDER)" /CREATE
-            if ($LASTEXITCODE -ne 0) {
-                Write-Error "Failed to create SSISDB folder: $($env:SSIS_FOLDER)"
-                exit 1
-            }
+            Write-Error "Failed to create SSISDB folder: $($env:SSIS_FOLDER)"
+            exit 1
         }
 
         # Deploy the .ispac file
