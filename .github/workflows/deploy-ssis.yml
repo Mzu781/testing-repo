@@ -34,15 +34,20 @@ jobs:
         Get-ChildItem -Path $projectPath -Recurse
       shell: powershell
 
-    # Verify SSIS DevOps Tools
-    - name: Verify SSIS DevOps Tools
+    # Verify SSIS Tools
+    - name: Verify SSIS Tools
       run: |
-        $toolsPath = "C:\ssis-tools"
-        if (-not (Test-Path "$toolsPath\SSISBuild.exe") -or -not (Test-Path "$toolsPath\SSISDeploy.exe")) {
-            Write-Error "SSIS DevOps Tools (SSISBuild.exe or SSISDeploy.exe) not found at: $toolsPath"
+        $buildToolsPath = "C:\ssis-tools"
+        $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
+        if (-not (Test-Path "$buildToolsPath\SSISBuild.exe")) {
+            Write-Error "SSISBuild.exe not found at: $buildToolsPath"
             exit 1
         }
-        Write-Output "SSIS DevOps Tools found at: $toolsPath"
+        if (-not (Test-Path $dtutilPath)) {
+            Write-Error "dtutil.exe not found at: $dtutilPath"
+            exit 1
+        }
+        Write-Output "SSIS tools found: SSISBuild.exe at $buildToolsPath, dtutil.exe at $dtutilPath"
       shell: powershell
 
     # Build SSIS Project using SSISBuild.exe
@@ -68,25 +73,34 @@ jobs:
         Write-Output "Build completed successfully. ISPAC path: $ispacPath"
       shell: powershell
 
-    # Deploy SSIS Package using SSISDeploy.exe
+    # Deploy SSIS Package using dtutil
     - name: Deploy SSIS Package
       env:
         SQL_SERVER: "LAPTOP-62JJ49T4"
         SSIS_CATALOG: "SSISDB"
         SSIS_FOLDER: "TimesheetDeploy"
         SSIS_PROJECT: "MigratingTimesheet"
-        SQL_USERNAME: ${{ secrets.SQL_USERNAME }}
-        SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
       run: |
         $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
         $folderPath = "/SSISDB/$($env:SSIS_FOLDER)/$($env:SSIS_PROJECT)"
+        $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
 
-        & "C:\ssis-tools\SSISDeploy.exe" -s:"$ispacPath" -d:"catalog;$folderPath;$($env:SQL_SERVER)" -at:SQL -u:$env:SQL_USERNAME -p:$env:SQL_PASSWORD -l:DIAG
+        # Create folder in SSISDB if it doesn't exist
+        & $dtutilPath /SQL "$($env:SSIS_FOLDER)" /EXISTS | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            & $dtutilPath /SQL "$($env:SSIS_FOLDER)" /CREATE
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error "Failed to create SSISDB folder: $($env:SSIS_FOLDER)"
+                exit 1
+            }
+        }
 
+        # Deploy the .ispac file
+        & $dtutilPath /FILE "$ispacPath" /DESTServer "$($env:SQL_SERVER)" /COPY SQL;"$folderPath" /QUIET
         if ($LASTEXITCODE -eq 0) {
             Write-Output "SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
         } else {
-            Write-Error "Deployment failed"
+            Write-Error "Deployment failed with exit code $LASTEXITCODE"
             exit 1
         }
       shell: powershell
