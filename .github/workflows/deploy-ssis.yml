@@ -32,5 +32,5 @@ jobs:
       run: |
         SSISDeploy.exe `
           -s:"C:\a\testing-repo\testing-repo\SSISOutput\Development\MigratingTimesheet.ispac" `
-          -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;rnjva-197-184-114-37.a.free.pinggy.link,45825" `
+          -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;rnsol-197-184-114-37.a.free.pinggy.link,44737" `
           -at:WIN
