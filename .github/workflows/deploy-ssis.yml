@@ -75,11 +75,13 @@ jobs:
         SSIS_CATALOG: "SSISDB"
         SSIS_FOLDER: "TimesheetDeploy"
         SSIS_PROJECT: "MigratingTimesheet"
+        SQL_USERNAME: ${{ secrets.SQL_USERNAME }}
+        SQL_PASSWORD: ${{ secrets.SQL_PASSWORD }}
       run: |
         $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
         $folderPath = "/SSISDB/$($env:SSIS_FOLDER)/$($env:SSIS_PROJECT)"
 
-        & "C:\ssis-tools\SSISDeploy.exe" -s:"$ispacPath" -d:"catalog;$folderPath;$($env:SQL_SERVER)" -at:Windows -l:DIAG
+        & "C:\ssis-tools\SSISDeploy.exe" -s:"$ispacPath" -d:"catalog;$folderPath;$($env:SQL_SERVER)" -at:SQL -u:$env:SQL_USERNAME -p:$env:SQL_PASSWORD -l:DIAG
 
         if ($LASTEXITCODE -eq 0) {
             Write-Output "SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
