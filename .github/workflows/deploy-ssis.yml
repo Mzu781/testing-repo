@@ -18,7 +18,7 @@ jobs:
     # Verify repository structure
     - name: Verify repository structure
       run: |
-        $projectPath = "${{ github.workspace }}\testing-repo\MigratingTimesheet"
+        $projectPath = "${{ github.workspace }}\MigratingTimesheet"
         if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
             Write-Error "SSIS project file not found at expected location: $projectPath"
             exit 1
@@ -34,7 +34,7 @@ jobs:
     # Build SSIS Project
     - name: Build SSIS Project
       run: |
-        $projectPath = "${{ github.workspace }}\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj"
+        $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
         $outputPath = "${{ runner.temp }}\SSISOutput"
         
         if (-not (Test-Path $outputPath)) {
