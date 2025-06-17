@@ -8,29 +8,38 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    # Step 1: Checkout the repository
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      # Step 1: Checkout the repository
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    # Step 2: Setup SSIS tools
-    - name: Setup SQL Server SSIS DevOps Tools
-      uses: jonlabelle/setup-ssis-devops-tools@v1
+      # Step 2: Setup SSIS tools
+      - name: Setup SQL Server SSIS DevOps Tools
+        uses: jonlabelle/setup-ssis-devops-tools@v1
 
-    # Step 3: Build SSIS project
-    - name: Build SSIS Package
-      run: |
-        mkdir "C:\a\testing-repo\testing-repo\SSISOutput" -Force
-        SSISBuild.exe -p:"C:\a\testing-repo\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj" -o:"C:\a\testing-repo\testing-repo\SSISOutput" -c:Development
+      # Step 3: Build SSIS project
+      - name: Build SSIS Package
+        run: |
+          mkdir "C:\a\testing-repo\testing-repo\SSISOutput" -Force
+          SSISBuild.exe -p:"C:\a\testing-repo\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj" -o:"C:\a\testing-repo\testing-repo\SSISOutput" -c:Development
 
-    # Step 4: Verify build output
-    - name: Verify .ispac file
-      run: |
-        dir "C:\a\testing-repo\testing-repo\SSISOutput\Development"
+      # Step 4: Verify build output
+      - name: Verify .ispac file
+        run: |
+          dir "C:\a\testing-repo\testing-repo\SSISOutput\Development"
 
-    # Step 5: Deploy using Windows Auth (Corrected)
-    - name: Deploy SSIS Package
-      run: |
-        SSISDeploy.exe `
-          -s:"C:\a\testing-repo\testing-repo\SSISOutput\Development\MigratingTimesheet.ispac" `
-          -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;rnsol-197-184-114-37.a.free.pinggy.link,44737" `
-          -at:WIN
+      # Step 5: Test SQL Server Connectivity
+      - name: Test SQL Server Connectivity
+        run: |
+          ping rnsol-197-184-114-37.a.free.pinggy.link
+          Test-NetConnection -ComputerName rnsol-197-184-114-37.a.free.pinggy.link -Port 44737
+
+      # Step 6: Deploy using SQL Auth with hardcoded credentials
+      - name: Deploy SSIS Package
+        run: |
+          SSISDeploy.exe `
+            -s:"C:\a\testing-repo\testing-repo\SSISOutput\Development\MigratingTimesheet.ispac" `
+            -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;rnsol-197-184-114-37.a.free.pinggy.link,44737" `
+            -at:SQL `
+            -u:"Auto_user" `
+            -p:"SecurePass2025" `
+            -v:Verbose
