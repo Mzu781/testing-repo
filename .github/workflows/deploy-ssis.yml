@@ -19,33 +19,10 @@ jobs:
     # Step 3: Build SSIS project
     - name: Build SSIS Package
       run: |
-        # Force create output directory
-        mkdir "${{ github.workspace }}\SSISOutput" -Force
-        
-        # Build with Development configuration
-        SSISBuild.exe `
-          -p:"${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj" `
-          -o:"${{ github.workspace }}\SSISOutput" `
-          -c:Development
-        
-        # Verify the exact output location
-        dir "${{ github.workspace }}\SSISOutput" -Recurse
+        mkdir "C:\a\testing-repo\testing-repo\SSISOutput" -Force
+        SSISBuild.exe -p:"C:\a\testing-repo\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj" -o:"C:\a\testing-repo\testing-repo\SSISOutput" -c:Development
 
     # Step 4: Deploy SSIS package
     - name: Deploy SSIS Package
       run: |
-        $ispacPath = "${{ github.workspace }}\SSISOutput\Development\MigratingTimesheet.ispac"
-        Write-Output "Looking for .ispac at: $ispacPath"
-        
-        if (-not (Test-Path $ispacPath)) {
-          Write-Error "ERROR: .ispac file not found at expected location!"
-          dir "${{ github.workspace }}\SSISOutput" -Recurse
-          exit 1
-        }
-        
-        SSISDeploy.exe `
-          -s:"$ispacPath" `
-          -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;rnjva-197-184-114-37.a.free.pinggy.link,45825" `
-          -at:SQL `
-          -u:Auto_user `
-          -p:SecurePass2025
+        "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe" /Silent /ModelType:Project /SourcePath:"C:\a\testing-repo\testing-repo\SSISOutput\Development\MigratingTimesheet.ispac" /DestinationServer:"rnjva-197-184-114-37.a.free.pinggy.link,45825" /DestinationPath:"/SSISDB/TimesheetDeploy/MigratingTimesheet" /DestinationUser:"Auto_user" /DestinationPassword:"SecurePass2025"
