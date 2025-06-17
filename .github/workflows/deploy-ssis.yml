@@ -11,41 +11,46 @@ jobs:
     runs-on: self-hosted
 
     steps:
+    # Checkout the repository
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Verify SSIS project exists
+    # Verify repository structure
+    - name: Verify repository structure
       run: |
-        $projectPath = "${{ github.workspace }}\MigratingTimesheet"
+        $projectPath = "${{ github.workspace }}\testing-repo\MigratingTimesheet"
         if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
             Write-Error "SSIS project file not found at expected location: $projectPath"
             exit 1
         }
-        Write-Output "✅ SSIS project file found at: $projectPath"
+        Write-Output "Project file found successfully"
         Get-ChildItem -Path $projectPath -Recurse
-      shell: pwsh
+      shell: powershell
 
+    # Setup SSIS DevOps Tools
     - name: Setup SSIS DevOps Tools
       uses: jonlabelle/setup-ssis-devops-tools@v1
 
+    # Build SSIS Project
     - name: Build SSIS Project
       run: |
-        $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
+        $projectPath = "${{ github.workspace }}\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj"
         $outputPath = "${{ runner.temp }}\SSISOutput"
-
+        
         if (-not (Test-Path $outputPath)) {
             New-Item -ItemType Directory -Path $outputPath -Force
         }
-
+        
         SSISBuild.exe -p:"$projectPath" -o:"$outputPath" -v:Diagnostic
-
+        
         if (-not (Test-Path "$outputPath\MigratingTimesheet.ispac")) {
-            Write-Error "❌ Build failed — .ispac file not found"
+            Write-Error "Build failed - ispac file not created"
             exit 1
         }
-        Write-Output "✅ Build completed successfully: $outputPath\MigratingTimesheet.ispac"
-      shell: pwsh
+        Write-Output "Build completed successfully"
+      shell: powershell
 
+    # Deploy SSIS Package
     - name: Deploy SSIS Package
       env:
         SQL_SERVER: "LAPTOP-62JJ49T4"
@@ -55,13 +60,13 @@ jobs:
       run: |
         $ispacPath = "${{ runner.temp }}\SSISOutput\MigratingTimesheet.ispac"
         $folderPath = "/SSISDB/$($env:SSIS_FOLDER)/$($env:SSIS_PROJECT)"
-
+        
         SSISDeploy.exe -s:"$ispacPath" -d:"catalog;$folderPath;$($env:SQL_SERVER)" -at:Windows -v:Diagnostic
-
+        
         if ($LASTEXITCODE -eq 0) {
-          Write-Output "✅ SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
+          Write-Output "SSIS Project $($env:SSIS_PROJECT) successfully deployed to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
         } else {
-          Write-Error "❌ Deployment failed for $($env:SSIS_PROJECT)"
+          Write-Error "Deployment failed for $($env:SSIS_PROJECT)"
           exit 1
         }
-      shell: pwsh
+      shell: powershell
