@@ -25,7 +25,7 @@ jobs:
         Get-ChildItem -Path $projectPath -Recurse
       shell: powershell
 
-    - name: Build SSIS Project using SSISBuild.exe
+        - name: Build SSIS Project using SSISBuild.exe
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
         $outputPath = "${{ runner.temp }}\SSISOutput"
@@ -36,13 +36,15 @@ jobs:
 
         & "C:\ssis-tools\SSISBuild.exe" -p:"$projectPath" -o:"$outputPath" -l:DIAG
 
-        if (-not (Test-Path "$outputPath\MigratingTimesheet.ispac")) {
+        $ispacPath = Join-Path $outputPath "MigratingTimesheet.ispac"
+        if (-not (Test-Path $ispacPath)) {
             Write-Error "❌ Build failed — .ispac not created."
             exit 1
         }
 
-        Write-Output "✅ Build completed successfully. ISPAC path: $outputPath\MigratingTimesheet.ispac"
+        Write-Output "✅ Build completed successfully. ISPAC path: $ispacPath"
       shell: powershell
+
 
     - name: Deploy SSIS Package using SSISDeploy.exe
       env:
