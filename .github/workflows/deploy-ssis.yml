@@ -1,90 +1,74 @@
-name: SSIS Build and Deploy
+name: Deploy SSIS Packages to SQL Server
 
 on:
+  push:
+    branches:
+      - master
   workflow_dispatch:
 
 jobs:
-  build_and_deploy:
+  deploy-ssis:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+    # Checkout the repository
+    - name: Checkout code
+      uses: actions/checkout@v4
+      shell: powershell
 
-      - name: Verify SSIS project exists
-        run: |
-          $projectPath = "$env:GITHUB_WORKSPACE\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj"
-          if (-not (Test-Path $projectPath)) {
-              Write-Error "SSIS project not found at: $projectPath"
-              Get-ChildItem -Path "$env:GITHUB_WORKSPACE\testing-repo" -Recurse
-              exit 1
-          }
-          Write-Output "SSIS project found successfully"
-        shell: powershell
+    # Verify repository structure
+    - name: Verify SSIS project exists
+      run: |
+        $projectPath = "${{ github.workspace }}\MigratingTimesheet"
+        if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
+            Write-Error "SSIS project file not found at expected location: $projectPath"
+            exit 1
+        }
+        Write-Output "✅ SSIS project file found at: $projectPath"
+        Get-ChildItem -Path $projectPath -Recurse
+      shell: powershell
 
-      - name: Setup SSIS DevOps Tools
-        run: |
-          # Create tools directory
-          $toolsDir = "C:\SSISTools"
-          if (-not (Test-Path $toolsDir)) {
-              New-Item -ItemType Directory -Path $toolsDir -Force
-          }
-          
-          # Download SSISBuild and SSISDeploy (if not already present)
-          $tools = @("SSISBuild.exe", "SSISDeploy.exe")
-          foreach ($tool in $tools) {
-              if (-not (Test-Path "$toolsDir\$tool")) {
-                  Invoke-WebRequest -Uri "https://example.com/ssistools/$tool" -OutFile "$toolsDir\$tool"
-              }
-          }
-          
-          # Add to PATH
-          $env:PATH = "$toolsDir;$env:PATH"
-          Write-Output "Tools setup complete"
-        shell: powershell
+    # Setup SSIS DevOps Tools
+    - name: Setup SSIS DevOps Tools
+      uses: jonlabelle/setup-ssis-devops-tools@v1
+      shell: powershell
 
-      - name: Build SSIS Project
-        run: |
-          $projectPath = "$env:GITHUB_WORKSPACE\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj"
-          $outputPath = "$env:GITHUB_WORKSPACE\SSISOutput"
-          
-          # Create output directory
-          if (-not (Test-Path $outputPath)) {
-              New-Item -ItemType Directory -Path $outputPath -Force
-          }
-          
-          # Build the project
-          SSISBuild.exe -p:"$projectPath" -o:"$outputPath" -v:Diagnostic
-          
-          # Verify build output
-          if (-not (Test-Path "$outputPath\MigratingTimesheet.ispac")) {
-              Write-Error "Build failed - ispac file not created"
-              exit 1
-          }
-          Write-Output "Build successful - ispac created at $outputPath"
-        shell: powershell
+    # Build SSIS Project
+    - name: Build SSIS Project
+      run: |
+        $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
+        $outputPath = "${{ runner.temp }}\SSISOutput"
+        
+        if (-not (Test-Path $outputPath)) {
+            New-Item -ItemType Directory -Path $outputPath -Force
+        }
 
-      - name: Deploy SSIS Package
-        run: |
-          $ispacPath = "$env:GITHUB_WORKSPACE\SSISOutput\MigratingTimesheet.ispac"
-          $server = "LAPTOP-62JJ49T4"
-          $user = "Auto_user"
-          $pass = "SecurePass2025"
-          $deployPath = "/SSISDB/TimesheetDeploy/MigratingTimesheet"
-          
-          Write-Output "Starting deployment to $server"
-          SSISDeploy.exe -s:"$ispacPath" -d:"catalog;$deployPath;$server" -at:SQL -u:$user -p:$pass -v:Diagnostic
-          
-          Write-Output "Deployment completed successfully"
-        shell: powershell
+        SSISBuild.exe -p:"$projectPath" -o:"$outputPath" -v:Diagnostic
 
-      - name: Basic Deployment Verification
-        run: |
-          Write-Output "Checking if ispac file exists in output directory"
-          if (Test-Path "$env:GITHUB_WORKSPACE\SSISOutput\MigratingTimesheet.ispac") {
-              Write-Output "Verification passed - ispac file exists"
-          } else {
-              Write-Error "Verification failed - ispac file missing"
-              exit 1
-          }
-        shell: powershell
+        if (-not (Test-Path "$outputPath\MigratingTimesheet.ispac")) {
+            Write-Error "❌ Build failed — .ispac file not found"
+            exit 1
+        }
+        Write-Output "✅ Build completed successfully: $outputPath\MigratingTimesheet.ispac"
+      shell: powershell
+
+    # Deploy SSIS Package
+    - name: Deploy SSIS Package
+      env:
+        SQL_SERVER: "LAPTOP-62JJ49T4"
+        SSIS_CATALOG: "SSISDB"
+        SSIS_FOLDER: "TimesheetDeploy"
+        SSIS_PROJECT: "MigratingTimesheet"
+      run: |
+        $ispacPath = "${{ runner.temp }}\SSISOutput\MigratingTimesheet.ispac"
+        $folderPath = "/SSISDB/$($env:SSIS_FOLDER)/$($env:SSIS_PROJECT)"
+        
+        SSISDeploy.exe -s:"$ispacPath" -d:"catalog;$folderPath;$($env:SQL_SERVER)" -at:Windows -v:Diagnostic
+
+        if ($LASTEXITCODE -eq 0) {
+          Write-Output "✅ SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
+        } else {
+          Write-Error "❌ Deployment failed for $($env:SSIS_PROJECT)"
+          exit 1
+        }
+      shell: powershell
