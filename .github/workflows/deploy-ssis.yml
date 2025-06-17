@@ -12,41 +12,39 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # Step 2: Debug - Show repository structure
-    - name: Show repository contents
-      run: |
-        echo "Repository contents:"
-        dir "${{ github.workspace }}" -Recurse
-
-    # Step 3: Setup SSIS tools
+    # Step 2: Setup SSIS tools
     - name: Setup SQL Server SSIS DevOps Tools
       uses: jonlabelle/setup-ssis-devops-tools@v1
 
-    # Step 4: Build SSIS project
+    # Step 3: Build SSIS project
     - name: Build SSIS Package
       run: |
-        $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
-        echo "Building project at: $projectPath"
+        # Force create output directory
+        mkdir "${{ github.workspace }}\SSISOutput" -Force
         
-        if (-not (Test-Path $projectPath)) {
-          Write-Error "Project file not found at expected location!"
-          exit 1
-        }
+        # Build with Development configuration
+        SSISBuild.exe `
+          -p:"${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj" `
+          -o:"${{ github.workspace }}\SSISOutput" `
+          -c:Development
         
-        SSISBuild.exe -p:"$projectPath" -o:"${{ github.workspace }}\SSISOutput"
+        # Verify the exact output location
+        dir "${{ github.workspace }}\SSISOutput" -Recurse
 
-    # Step 5: Deploy SSIS package
+    # Step 4: Deploy SSIS package
     - name: Deploy SSIS Package
       run: |
-        $ispacPath = "${{ github.workspace }}\SSISOutput\MigratingTimesheet.ispac"
-        echo "Deploying package: $ispacPath"
+        $ispacPath = "${{ github.workspace }}\SSISOutput\Development\MigratingTimesheet.ispac"
+        Write-Output "Looking for .ispac at: $ispacPath"
         
         if (-not (Test-Path $ispacPath)) {
-          Write-Error ".ispac file not found - build may have failed!"
+          Write-Error "ERROR: .ispac file not found at expected location!"
+          dir "${{ github.workspace }}\SSISOutput" -Recurse
           exit 1
         }
         
-        SSISDeploy.exe -s:"$ispacPath" `
+        SSISDeploy.exe `
+          -s:"$ispacPath" `
           -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;LAPTOP-62JJ49T4" `
           -at:SQL `
           -u:Auto_user `
