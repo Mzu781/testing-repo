@@ -55,7 +55,7 @@ x64/
 *.suo
 *.user
 *.sln.docstates
-*.params
+# *.params
 
 # Visual Studio database and deployment
 *.dbmdl
