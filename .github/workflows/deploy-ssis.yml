@@ -22,7 +22,12 @@ jobs:
         mkdir "C:\a\testing-repo\testing-repo\SSISOutput" -Force
         SSISBuild.exe -p:"C:\a\testing-repo\testing-repo\MigratingTimesheet\MigratingTimesheet.dtproj" -o:"C:\a\testing-repo\testing-repo\SSISOutput" -c:Development
 
-    # Step 4: Deploy SSIS package
+    # Step 4: Verify build output
+    - name: Verify .ispac file
+      run: |
+        dir "C:\a\testing-repo\testing-repo\SSISOutput\Development"
+
+    # Step 5: Deploy using Windows Auth
     - name: Deploy SSIS Package
       run: |
-        "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe" /Silent /ModelType:Project /SourcePath:"C:\a\testing-repo\testing-repo\SSISOutput\Development\MigratingTimesheet.ispac" /DestinationServer:"rnjva-197-184-114-37.a.free.pinggy.link,45825" /DestinationPath:"/SSISDB/TimesheetDeploy/MigratingTimesheet" /DestinationUser:"Auto_user" /DestinationPassword:"SecurePass2025"
+        SSISDeploy.exe -s:"C:\a\testing-repo\testing-repo\SSISOutput\Development\MigratingTimesheet.ispac" -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;rnjva-197-184-114-37.a.free.pinggy.link,45825" -at:Windows -conf:Development
