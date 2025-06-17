@@ -27,10 +27,10 @@ jobs:
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet"
         if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
-            Write-Error "❌ SSIS project file not found at: $projectPath"
+            Write-Error "SSIS project file not found at: $projectPath"
             exit 1
         }
-        Write-Output "✅ SSIS project found at: $projectPath"
+        Write-Output "SSIS project found at: $projectPath"
         Get-ChildItem -Path $projectPath -Recurse
       shell: powershell
 
@@ -39,10 +39,10 @@ jobs:
       run: |
         $toolsPath = "C:\ssis-tools"
         if (-not (Test-Path "$toolsPath\SSISBuild.exe") -or -not (Test-Path "$toolsPath\SSISDeploy.exe")) {
-            Write-Error "❌ SSIS DevOps Tools (SSISBuild.exe or SSISDeploy.exe) not found at: $toolsPath"
+            Write-Error "SSIS DevOps Tools (SSISBuild.exe or SSISDeploy.exe) not found at: $toolsPath"
             exit 1
         }
-        Write-Output "✅ SSIS DevOps Tools found at: $toolsPath"
+        Write-Output "SSIS DevOps Tools found at: $toolsPath"
       shell: powershell
 
     # Build SSIS Project using SSISBuild.exe
@@ -59,11 +59,11 @@ jobs:
 
         $ispacPath = Join-Path $outputPath "MigratingTimesheet.ispac"
         if (-not (Test-Path $ispacPath)) {
-            Write-Error "❌ Build failed — .ispac not created at: $ispacPath"
+            Write-Error "Build failed - .ispac not created at: $ispacPath"
             exit 1
         }
 
-        Write-Output "✅ Build completed successfully. ISPAC path: $ispacPath"
+        Write-Output "Build completed successfully. ISPAC path: $ispacPath"
       shell: powershell
 
     # Deploy SSIS Package using SSISDeploy.exe
@@ -80,9 +80,9 @@ jobs:
         & "C:\ssis-tools\SSISDeploy.exe" -s:"$ispacPath" -d:"catalog;$folderPath;$($env:SQL_SERVER)" -at:Windows -l:DIAG
 
         if ($LASTEXITCODE -eq 0) {
-            Write-Output "✅ SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
+            Write-Output "SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
         } else {
-            Write-Error "❌ Deployment failed"
+            Write-Error "Deployment failed"
             exit 1
         }
       shell: powershell
