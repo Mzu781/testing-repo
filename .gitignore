@@ -64,7 +64,7 @@ x64/
 # *.dtproj
 *.dtproj.user
 *.dtsConfig
-*.ispac
+# *.ispac
 *.rptproj.user
 *.sqlproj.user
 *.designer.cs
