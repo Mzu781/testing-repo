@@ -1,0 +1,86 @@
+# Python bytecode and cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python virtual environments
+venv/
+.env/
+.venv/
+
+# Dependency files
+*.egg-info/
+Pipfile
+Pipfile.lock
+
+# Logs and database
+*.log
+db.sqlite3
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VSCode and JetBrains settings
+.vscode/
+.idea/
+.vs
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Test coverage and results
+.coverage
+*.cover
+htmlcov/
+TestResults/
+
+# Build and output
+bin/
+obj/
+build/
+bld/
+[Dd]ebug/
+[Rr]elease/
+x64/
+[Oo]ut/
+*.Cache
+*.pidb
+*.sdf
+*.opensdf
+*.tlog
+
+# Solution and project files
+*.sln
+*.suo
+*.user
+*.sln.docstates
+*.params
+
+# Visual Studio database and deployment
+*.dbmdl
+*.deploymanifest
+*.database
+*.dtproj
+*.dtproj.user
+*.dtsConfig
+*.ispac
+*.rptproj.user
+*.sqlproj.user
+*.designer.cs
+
+# SSIS-specific
+*.dtsx~*
+
+# Backup and temp files
+*~
+*.bak
+*.tmp
+*.temp
+
+# Package management
+packages/
+*.nupkg
+
+# Node.js (if applicable)
+node_modules/
