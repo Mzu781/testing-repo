@@ -5,50 +5,92 @@ on:
 
 jobs:
   build_and_deploy:
-    runs-on: self-hosted  # Use self-hosted runner
+    runs-on: self-hosted
 
     steps:
-      # Step 1: Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # Step 2: Setup SSIS tools
-      - name: Setup SQL Server SSIS DevOps Tools
-        uses: jonlabelle/setup-ssis-devops-tools@v1
-
-      # Step 3: Build SSIS project
-      - name: Build SSIS Package
+      - name: Verify repository structure
         run: |
-          mkdir "SSISOutput" -Force
-          SSISBuild.exe -p:"MigratingTimesheet\MigratingTimesheet.dtproj" -o:"SSISOutput" -c:Development
+          $projectPath = "C:\actions-runner\_work\sc_MuzuvukileNqwiliso_2025\sc_MuzuvukileNqwiliso_2025\HandsOnProject\Timesheet\MigratingTimesheet"
+          if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
+              Write-Error "SSIS project file not found at expected location: $projectPath"
+              exit 1
+          }
+          Write-Output "Project file found successfully"
+          Get-ChildItem -Path $projectPath -Recurse
+        shell: powershell
 
-      # Step 4: Verify build output
-      - name: Verify .ispac file
+      - name: Setup SSIS DevOps Tools
         run: |
-          dir "SSISOutput\Development"
+          $toolsPath = "C:\actions-runner\_work\_actions\jonlabelle\setup-ssis-devops-tools\v1\ssis-tools"
+          if (-not (Test-Path $toolsPath)) {
+              mkdir $toolsPath
+          }
+          # Download and extract SSIS DevOps tools
+          Invoke-WebRequest -Uri "https://github.com/jonlabelle/SSIS DevOps Tools/releases/download/v1.0/SSISDevOpsTools.zip" -OutFile "$toolsPath\SSISDevOpsTools.zip"
+          Expand-Archive -Path "$toolsPath\SSISDevOpsTools.zip" -DestinationPath $toolsPath
+          # Add to PATH
+          $env:PATH = "$toolsPath;$env:PATH"
+          [Environment]::SetEnvironmentVariable("PATH", $env:PATH, [EnvironmentVariableTarget]::Machine)
+        shell: powershell
 
-      # Step 5: Test SQL Server Connectivity
-      - name: Test SQL Server Connectivity
+      - name: Build SSIS Project
         run: |
-          Test-NetConnection -ComputerName LAPTOP-62JJ49T4 -Port 1433
+          $projectPath = "C:\actions-runner\_work\sc_MuzuvukileNqwiliso_2025\sc_MuzuvukileNqwiliso_2025\HandsOnProject\Timesheet\MigratingTimesheet\MigratingTimesheet.dtproj"
+          $outputPath = "C:\actions-runner\_work\SSISOutput"
+          
+          if (-not (Test-Path $outputPath)) {
+              New-Item -ItemType Directory -Path $outputPath -Force
+          }
+          
+          SSISBuild.exe -p:"$projectPath" -o:"$outputPath" -v:Diagnostic
+          
+          if (-not (Test-Path "$outputPath\MigratingTimesheet.ispac")) {
+              Write-Error "Build failed - ispac file not created"
+              exit 1
+          }
+          Write-Output "Build completed successfully"
+        shell: powershell
 
-      # Step 6: Deploy SSIS Package
       - name: Deploy SSIS Package
         run: |
-          $ispacPath = "SSISOutput\Development\MigratingTimesheet.ispac"
-          SSISDeploy.exe `
-            -s:"$ispacPath" `
-            -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;LAPTOP-62JJ49T4" `
-            -at:SQL `
-            -u:"Auto_user" `
-            -p:"SecurePass2025" `
-            -v:Verbose > deploy_output.txt 2>&1
-          type deploy_output.txt
+          $ispacPath = "C:\actions-runner\_work\SSISOutput\MigratingTimesheet.ispac"
+          $serverName = "LAPTOP-62JJ49T4"
+          $username = "Auto_user"
+          $password = "SecurePass2025"
+          $folderPath = "/SSISDB/TimesheetDeploy/MigratingTimesheet"
+          
+          SSISDeploy.exe -s:"$ispacPath" -d:"catalog;$folderPath;$serverName" -at:SQL -u:$username -p:$password -v:Diagnostic
+          
+          Write-Output "Deployment completed successfully"
+        shell: powershell
 
-      # Step 7: Upload deploy output as artifact
-      - name: Upload deploy output as artifact
-        if: always()  # Run even if deployment fails
-        uses: actions/upload-artifact@v4
-        with:
-          name: deploy-output
-          path: deploy_output.txt
+      - name: Verify Deployment
+        run: |
+          $serverName = "LAPTOP-62JJ49T4"
+          $username = "Auto_user"
+          $password = "SecurePass2025"
+          $folderPath = "TimesheetDeploy/MigratingTimesheet"
+          
+          $connectionString = "Data Source=$serverName;User ID=$username;Password=$password;Initial Catalog=SSISDB;"
+          $query = "SELECT COUNT(1) FROM [catalog].[projects] WHERE [name] = 'MigratingTimesheet' AND [folder_name] = '$folderPath'"
+          
+          $connection = New-Object System.Data.SqlClient.SqlConnection
+          $connection.ConnectionString = $connectionString
+          $command = New-Object System.Data.SqlClient.SqlCommand
+          $command.Connection = $connection
+          $command.CommandText = $query
+          
+          $connection.Open()
+          $result = $command.ExecuteScalar()
+          $connection.Close()
+          
+          if ($result -eq 1) {
+              Write-Output "Verification successful - package deployed to SSISDB"
+          } else {
+              Write-Error "Verification failed - package not found in SSISDB"
+              exit 1
+          }
+        shell: powershell
