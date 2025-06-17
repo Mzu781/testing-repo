@@ -96,7 +96,13 @@ jobs:
         }
 
         # Deploy the .ispac file
-        & $dtutilPath /FILE "$ispacPath" /DESTServer "$($env:SQL_SERVER)" /COPY SQL;"$folderPath" /QUIET
+        $dtutilArgs = @(
+            "/FILE", "$ispacPath",
+            "/DESTServer", "$($env:SQL_SERVER)",
+            "/COPY", "SQL;$folderPath",
+            "/QUIET"
+        )
+        & $dtutilPath @dtutilArgs
         if ($LASTEXITCODE -eq 0) {
             Write-Output "SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
         } else {
