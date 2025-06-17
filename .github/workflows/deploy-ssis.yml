@@ -11,9 +11,18 @@ jobs:
     runs-on: self-hosted
 
     steps:
+    # Checkout the repository
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # Debug workspace path
+    - name: Debug workspace path
+      run: |
+        Write-Output "Workspace path: ${{ github.workspace }}"
+        Get-ChildItem -Path "${{ github.workspace }}" -Recurse
+      shell: powershell
+
+    # Verify SSIS project exists
     - name: Verify SSIS project exists
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet"
@@ -25,7 +34,19 @@ jobs:
         Get-ChildItem -Path $projectPath -Recurse
       shell: powershell
 
-        - name: Build SSIS Project using SSISBuild.exe
+    # Verify SSIS DevOps Tools
+    - name: Verify SSIS DevOps Tools
+      run: |
+        $toolsPath = "C:\ssis-tools"
+        if (-not (Test-Path "$toolsPath\SSISBuild.exe") -or -not (Test-Path "$toolsPath\SSISDeploy.exe")) {
+            Write-Error "❌ SSIS DevOps Tools (SSISBuild.exe or SSISDeploy.exe) not found at: $toolsPath"
+            exit 1
+        }
+        Write-Output "✅ SSIS DevOps Tools found at: $toolsPath"
+      shell: powershell
+
+    # Build SSIS Project using SSISBuild.exe
+    - name: Build SSIS Project
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
         $outputPath = "${{ runner.temp }}\SSISOutput"
@@ -38,15 +59,15 @@ jobs:
 
         $ispacPath = Join-Path $outputPath "MigratingTimesheet.ispac"
         if (-not (Test-Path $ispacPath)) {
-            Write-Error "❌ Build failed — .ispac not created."
+            Write-Error "❌ Build failed — .ispac not created at: $ispacPath"
             exit 1
         }
 
         Write-Output "✅ Build completed successfully. ISPAC path: $ispacPath"
       shell: powershell
 
-
-    - name: Deploy SSIS Package using SSISDeploy.exe
+    # Deploy SSIS Package using SSISDeploy.exe
+    - name: Deploy SSIS Package
       env:
         SQL_SERVER: "LAPTOP-62JJ49T4"
         SSIS_CATALOG: "SSISDB"
