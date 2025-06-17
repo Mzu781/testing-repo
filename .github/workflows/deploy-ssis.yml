@@ -1,0 +1,53 @@
+name: SSIS Build and Deploy
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    runs-on: windows-latest
+
+    steps:
+    # Step 1: Checkout the repository
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # Step 2: Debug - Show repository structure
+    - name: Show repository contents
+      run: |
+        echo "Repository contents:"
+        dir "${{ github.workspace }}" -Recurse
+
+    # Step 3: Setup SSIS tools
+    - name: Setup SQL Server SSIS DevOps Tools
+      uses: jonlabelle/setup-ssis-devops-tools@v1
+
+    # Step 4: Build SSIS project
+    - name: Build SSIS Package
+      run: |
+        $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
+        echo "Building project at: $projectPath"
+        
+        if (-not (Test-Path $projectPath)) {
+          Write-Error "Project file not found at expected location!"
+          exit 1
+        }
+        
+        SSISBuild.exe -p:"$projectPath" -o:"${{ github.workspace }}\SSISOutput"
+
+    # Step 5: Deploy SSIS package
+    - name: Deploy SSIS Package
+      run: |
+        $ispacPath = "${{ github.workspace }}\SSISOutput\MigratingTimesheet.ispac"
+        echo "Deploying package: $ispacPath"
+        
+        if (-not (Test-Path $ispacPath)) {
+          Write-Error ".ispac file not found - build may have failed!"
+          exit 1
+        }
+        
+        SSISDeploy.exe -s:"$ispacPath" `
+          -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;LAPTOP-62JJ49T4" `
+          -at:SQL `
+          -u:Auto_user `
+          -p:SecurePass2025
