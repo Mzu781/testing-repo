@@ -50,16 +50,18 @@ jobs:
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
         $outputPath = "${{ runner.temp }}\SSISOutput"
+        $config = "Development"
 
         if (-not (Test-Path $outputPath)) {
             New-Item -ItemType Directory -Path $outputPath -Force
         }
 
-        & "C:\ssis-tools\SSISBuild.exe" -p:"$projectPath" -o:"$outputPath" -l:DIAG
+        & "C:\ssis-tools\SSISBuild.exe" -p:"$projectPath" -o:"$outputPath" -c:"$config" -l:DIAG
 
-        $ispacPath = Join-Path $outputPath "MigratingTimesheet.ispac"
+        $ispacPath = Join-Path $outputPath "$config\MigratingTimesheet.ispac"
         if (-not (Test-Path $ispacPath)) {
             Write-Error "Build failed - .ispac not created at: $ispacPath"
+            Get-ChildItem -Path $outputPath -Recurse
             exit 1
         }
 
@@ -74,7 +76,7 @@ jobs:
         SSIS_FOLDER: "TimesheetDeploy"
         SSIS_PROJECT: "MigratingTimesheet"
       run: |
-        $ispacPath = "${{ runner.temp }}\SSISOutput\MigratingTimesheet.ispac"
+        $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
         $folderPath = "/SSISDB/$($env:SSIS_FOLDER)/$($env:SSIS_PROJECT)"
 
         & "C:\ssis-tools\SSISDeploy.exe" -s:"$ispacPath" -d:"catalog;$folderPath;$($env:SQL_SERVER)" -at:Windows -l:DIAG
