@@ -3,7 +3,7 @@ name: Deploy SSIS Packages to SQL Server
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
 jobs:
@@ -14,9 +14,8 @@ jobs:
     # Checkout the repository
     - name: Checkout code
       uses: actions/checkout@v4
-      shell: powershell
 
-    # Verify repository structure
+    # Verify SSIS project exists
     - name: Verify SSIS project exists
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet"
@@ -31,7 +30,6 @@ jobs:
     # Setup SSIS DevOps Tools
     - name: Setup SSIS DevOps Tools
       uses: jonlabelle/setup-ssis-devops-tools@v1
-      shell: powershell
 
     # Build SSIS Project
     - name: Build SSIS Project
