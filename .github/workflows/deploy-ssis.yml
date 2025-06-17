@@ -45,7 +45,7 @@ jobs:
         
         SSISDeploy.exe `
           -s:"$ispacPath" `
-          -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;LAPTOP-62JJ49T4,1433" `
+          -d:"catalog;/SSISDB/TimesheetDeploy/MigratingTimesheet;rnjva-197-184-114-37.a.free.pinggy.link,45825" `
           -at:SQL `
           -u:Auto_user `
           -p:SecurePass2025
