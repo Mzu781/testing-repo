@@ -1,3 +1,115 @@
+# name: Deploy SSIS Packages to SQL Server
+
+# on:
+#   push:
+#     branches:
+#       - master
+#   workflow_dispatch:
+
+# jobs:
+#   deploy-ssis:
+#     runs-on: self-hosted
+
+#     steps:
+#       # Checkout the repo
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+
+#       # Debug workspace path and user context
+#       - name: Debug workspace path and user context
+#         run: |
+#           Write-Output "Workspace path: ${{ github.workspace }}"
+#           Write-Output "Current user: $env:USERDOMAIN\$env:USERNAME"
+#           Get-ChildItem -Path "${{ github.workspace }}" -Recurse
+#         shell: powershell
+
+#       # Verify SSIS project exists
+#       - name: Verify SSIS project exists
+#         run: |
+#           $projectPath = "${{ github.workspace }}\MigratingTimesheet"
+#           if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
+#               Write-Error "SSIS project file not found at: $projectPath"
+#               exit 1
+#           }
+#           Write-Output "SSIS project found at: $projectPath"
+#           Get-ChildItem -Path $projectPath -Recurse
+#         shell: powershell
+
+#       # Verify SSIS Tools availability
+#       - name: Verify SSIS Tools
+#         run: |
+#           $buildToolsPath = "C:\ssis-tools"
+#           $deploymentWizard = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe"
+#           if (-not (Test-Path "$buildToolsPath\SSISBuild.exe")) {
+#               Write-Error "SSISBuild.exe not found at: $buildToolsPath"
+#               exit 1
+#           }
+#           if (-not (Test-Path $deploymentWizard)) {
+#               Write-Error "ISDeploymentWizard.exe not found at: $deploymentWizard"
+#               exit 1
+#           }
+#           if (-not (Get-Command sqlcmd.exe -ErrorAction SilentlyContinue)) {
+#               Write-Error "sqlcmd.exe not found. Ensure SQL Server tools are installed."
+#               exit 1
+#           }
+#           Write-Output "Tools verified: SSISBuild.exe, sqlcmd.exe, ISDeploymentWizard.exe"
+#         shell: powershell
+
+#       # Build SSIS Project using SSISBuild.exe
+#       - name: Build SSIS Project
+#         run: |
+#           $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
+#           $outputPath = "${{ runner.temp }}\SSISOutput"
+#           $config = "Development"
+
+#           if (-not (Test-Path $outputPath)) {
+#               New-Item -ItemType Directory -Path $outputPath -Force
+#           }
+
+#           & "C:\ssis-tools\SSISBuild.exe" -p:"$projectPath" -o:"$outputPath" -c:"$config" -l:DIAG
+
+#           $ispacPath = Join-Path $outputPath "$config\MigratingTimesheet.ispac"
+#           if (-not (Test-Path $ispacPath)) {
+#               Write-Error "Build failed - .ispac not created at: $ispacPath"
+#               Get-ChildItem -Path $outputPath -Recurse
+#               exit 1
+#           }
+
+#           Write-Output "Build completed successfully. ISPAC path: $ispacPath"
+#         shell: powershell
+
+#       # Deploy SSIS Package using ISDeploymentWizard (fixed no DeploymentConfigFile)
+#       - name: Deploy SSIS Package
+#         run: |
+#           $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
+#           $sqlServer = "LAPTOP-62JJ49T4"
+#           $catalogName = "SSISDB"
+#           $folderName = "TimesheetDeploy"
+#           $deploymentWizard = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe"
+
+#           # Check if folder exists; create if not
+#           $folderCheckQuery = "SELECT 1 FROM $catalogName.catalog.folders WHERE name = '$folderName'"
+#           $folderExists = sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$folderCheckQuery" -E -h -1
+
+#           if ([string]::IsNullOrEmpty($folderExists)) {
+#               Write-Output "Folder '$folderName' does not exist. Creating..."
+#               $createFolderQuery = "EXEC $catalogName.catalog.create_folder @folder_name = '$folderName';"
+#               sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$createFolderQuery" -E
+#           }
+
+#           Write-Output "Deploying project to SSIS Catalog..."
+
+#           # Run deployment without DeploymentConfigFile argument
+#           & "$deploymentWizard" /Silent /SourcePath:"$ispacPath" /DestinationServer:"$sqlServer" /DestinationPath:"$catalogName\$folderName"
+
+#           if ($LASTEXITCODE -ne 0) {
+#               Write-Error "Deployment failed"
+#               exit 1
+#           }
+
+#           Write-Output "Deployment completed successfully."
+#         shell: powershell
+
 name: Deploy SSIS Packages to SQL Server
 
 on:
@@ -11,101 +123,116 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # Checkout the repo
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Debug workspace path and user context
-      - name: Debug workspace path and user context
+      - name: Debug workspace and user
+        shell: powershell
         run: |
           Write-Output "Workspace path: ${{ github.workspace }}"
           Write-Output "Current user: $env:USERDOMAIN\$env:USERNAME"
           Get-ChildItem -Path "${{ github.workspace }}" -Recurse
-        shell: powershell
 
-      # Verify SSIS project exists
-      - name: Verify SSIS project exists
+      - name: Verify SSIS project file exists
+        shell: powershell
         run: |
           $projectPath = "${{ github.workspace }}\MigratingTimesheet"
           if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
-              Write-Error "SSIS project file not found at: $projectPath"
-              exit 1
+            Write-Error "SSIS project file not found at: $projectPath"
+            exit 1
           }
-          Write-Output "SSIS project found at: $projectPath"
-          Get-ChildItem -Path $projectPath -Recurse
-        shell: powershell
+          Write-Output "Found SSIS project file at $projectPath"
 
-      # Verify SSIS Tools availability
-      - name: Verify SSIS Tools
+      - name: Verify SSIS build tools exist
+        shell: powershell
         run: |
-          $buildToolsPath = "C:\ssis-tools"
-          $deploymentWizard = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe"
-          if (-not (Test-Path "$buildToolsPath\SSISBuild.exe")) {
-              Write-Error "SSISBuild.exe not found at: $buildToolsPath"
-              exit 1
+          if (-not (Test-Path "C:\ssis-tools\SSISBuild.exe")) {
+            Write-Error "SSISBuild.exe not found in C:\ssis-tools"
+            exit 1
           }
-          if (-not (Test-Path $deploymentWizard)) {
-              Write-Error "ISDeploymentWizard.exe not found at: $deploymentWizard"
-              exit 1
+          if (-not (Test-Path "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe")) {
+            Write-Error "ISDeploymentWizard.exe not found"
+            exit 1
           }
           if (-not (Get-Command sqlcmd.exe -ErrorAction SilentlyContinue)) {
-              Write-Error "sqlcmd.exe not found. Ensure SQL Server tools are installed."
-              exit 1
+            Write-Error "sqlcmd.exe not found"
+            exit 1
           }
-          Write-Output "Tools verified: SSISBuild.exe, sqlcmd.exe, ISDeploymentWizard.exe"
-        shell: powershell
+          Write-Output "All required tools found."
 
-      # Build SSIS Project using SSISBuild.exe
       - name: Build SSIS Project
+        shell: powershell
         run: |
-          $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
-          $outputPath = "${{ runner.temp }}\SSISOutput"
+          $projectFile = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
+          $outputDir = "${{ runner.temp }}\SSISOutput"
           $config = "Development"
-
-          if (-not (Test-Path $outputPath)) {
-              New-Item -ItemType Directory -Path $outputPath -Force
+          if (-not (Test-Path $outputDir)) {
+            New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
           }
-
-          & "C:\ssis-tools\SSISBuild.exe" -p:"$projectPath" -o:"$outputPath" -c:"$config" -l:DIAG
-
-          $ispacPath = Join-Path $outputPath "$config\MigratingTimesheet.ispac"
+          & "C:\ssis-tools\SSISBuild.exe" -p:"$projectFile" -o:"$outputDir" -c:"$config" -l:DIAG
+          $ispacPath = Join-Path $outputDir "$config\MigratingTimesheet.ispac"
           if (-not (Test-Path $ispacPath)) {
-              Write-Error "Build failed - .ispac not created at: $ispacPath"
-              Get-ChildItem -Path $outputPath -Recurse
-              exit 1
+            Write-Error "Build failed: .ispac file not found at $ispacPath"
+            exit 1
           }
+          Write-Output "Build succeeded: $ispacPath"
 
-          Write-Output "Build completed successfully. ISPAC path: $ispacPath"
+      - name: Create SSIS Catalog Folder if missing
         shell: powershell
-
-      # Deploy SSIS Package using ISDeploymentWizard (fixed no DeploymentConfigFile)
-      - name: Deploy SSIS Package
         run: |
-          $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
           $sqlServer = "LAPTOP-62JJ49T4"
-          $catalogName = "SSISDB"
+          $catalogDB = "SSISDB"
           $folderName = "TimesheetDeploy"
-          $deploymentWizard = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe"
 
-          # Check if folder exists; create if not
-          $folderCheckQuery = "SELECT 1 FROM $catalogName.catalog.folders WHERE name = '$folderName'"
-          $folderExists = sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$folderCheckQuery" -E -h -1
-
+          $folderExists = sqlcmd -S $sqlServer -d $catalogDB -Q "SELECT 1 FROM catalog.folders WHERE name = '$folderName'" -E -h -1
           if ([string]::IsNullOrEmpty($folderExists)) {
-              Write-Output "Folder '$folderName' does not exist. Creating..."
-              $createFolderQuery = "EXEC $catalogName.catalog.create_folder @folder_name = '$folderName';"
-              sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$createFolderQuery" -E
+            Write-Output "Folder '$folderName' does not exist. Creating..."
+            sqlcmd -S $sqlServer -d $catalogDB -Q "EXEC catalog.create_folder @folder_name = '$folderName'" -E
+          } else {
+            Write-Output "Folder '$folderName' exists."
           }
 
-          Write-Output "Deploying project to SSIS Catalog..."
-
-          # Run deployment without DeploymentConfigFile argument
-          & "$deploymentWizard" /Silent /SourcePath:"$ispacPath" /DestinationServer:"$sqlServer" /DestinationPath:"$catalogName\$folderName"
-
-          if ($LASTEXITCODE -ne 0) {
-              Write-Error "Deployment failed"
-              exit 1
-          }
-
-          Write-Output "Deployment completed successfully."
+      - name: Deploy SSIS Project (.ispac) using SQL stored procedure
         shell: powershell
+        run: |
+          param(
+            [string]$ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac",
+            [string]$sqlServer = "LAPTOP-62JJ49T4",
+            [string]$catalogDB = "SSISDB",
+            [string]$folderName = "TimesheetDeploy",
+            [string]$projectName = "MigratingTimesheet"
+          )
+
+          Add-Type -AssemblyName System.Data
+          Write-Output "Reading .ispac file from $ispacPath"
+          $projectBytes = [System.IO.File]::ReadAllBytes($ispacPath)
+
+          $connString = "Data Source=$sqlServer;Initial Catalog=$catalogDB;Integrated Security=SSPI;"
+          $conn = New-Object System.Data.SqlClient.SqlConnection $connString
+          $conn.Open()
+
+          $cmd = $conn.CreateCommand()
+          $cmd.CommandText = "[catalog].[deploy_project]"
+          $cmd.CommandType = [System.Data.CommandType]::StoredProcedure
+
+          $p1 = $cmd.Parameters.Add("@folder_name", [System.Data.SqlDbType]::NVarChar, 128)
+          $p1.Value = $folderName
+
+          $p2 = $cmd.Parameters.Add("@project_name", [System.Data.SqlDbType]::NVarChar, 128)
+          $p2.Value = $projectName
+
+          $p3 = $cmd.Parameters.Add("@project_stream", [System.Data.SqlDbType]::VarBinary, -1)
+          $p3.Value = $projectBytes
+
+          try {
+            Write-Output "Deploying project..."
+            $cmd.ExecuteNonQuery() | Out-Null
+            Write-Output "Deployment succeeded!"
+          }
+          catch {
+            Write-Error "Deployment failed: $_"
+            exit 1
+          }
+          finally {
+            $conn.Close()
+          }
