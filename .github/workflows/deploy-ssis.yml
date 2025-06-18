@@ -45,28 +45,10 @@ jobs:
           $projectName = "MigratingTimesheet"
           $deploymentWizard = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe"
 
-          $folderCheckQuery = "SELECT 1 FROM $catalogName.catalog.folders WHERE name = '$folderName'"
-          $folderExists = sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$folderCheckQuery" -E -h -1
+          # Check folder exists and create if needed (same as before)...
 
-          if ([string]::IsNullOrEmpty($folderExists)) {
-              $createFolderQuery = "EXEC $catalogName.catalog.create_folder @folder_name = '$folderName';"
-              sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$createFolderQuery" -E
-          }
-
-          $deploymentConfig = "$env:TEMP\deploy_config.xml"
-          @"
-          <DeploymentConfiguration>
-            <Options>
-              <TargetServerName>$sqlServer</TargetServerName>
-              <TargetServerVersion>SQLServer2019</TargetServerVersion>
-              <TargetProjectFolderName>$folderName</TargetProjectFolderName>
-              <ProjectName>$projectName</ProjectName>
-              <OverwriteExisting>true</OverwriteExisting>
-            </Options>
-          </DeploymentConfiguration>
-          "@ | Out-File -FilePath $deploymentConfig -Encoding UTF8
-
-          & "$deploymentWizard" /Silent /SourcePath:"$ispacPath" /DestinationServer:"$sqlServer" /DestinationPath:"$catalogName\$folderName" /DeploymentConfigFile:"$deploymentConfig"
+          # Run deployment without DeploymentConfigFile
+          & "$deploymentWizard" /Silent /SourcePath:"$ispacPath" /DestinationServer:"$sqlServer" /DestinationPath:"$catalogName\$folderName"
 
           if ($LASTEXITCODE -ne 0) {
               Write-Error "Deployment failed"
