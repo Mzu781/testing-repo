@@ -11,19 +11,16 @@ jobs:
     runs-on: self-hosted
 
     steps:
-    # Checkout the repository
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # Debug workspace path
-    - name: Debug workspace path
+    - name: Debug workspace
       run: |
         Write-Output "Workspace path: ${{ github.workspace }}"
         Get-ChildItem -Path "${{ github.workspace }}" -Recurse
       shell: powershell
 
-    # Verify SSIS project exists
-    - name: Verify SSIS project exists
+    - name: Verify SSIS Project
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet"
         if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
@@ -31,31 +28,18 @@ jobs:
             exit 1
         }
         Write-Output "SSIS project found at: $projectPath"
-        Get-ChildItem -Path $projectPath -Recurse
       shell: powershell
 
-    # Verify SSIS Tools
-    - name: Verify SSIS Tools
+    - name: Verify Build Tool
       run: |
-        $buildToolsPath = "C:\ssis-tools"
-        $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
-        $sqlcmdPath = "sqlcmd.exe"
-        if (-not (Test-Path "$buildToolsPath\SSISBuild.exe")) {
-            Write-Error "SSISBuild.exe not found at: $buildToolsPath"
+        $buildToolsPath = "C:\ssis-tools\SSISBuild.exe"
+        if (-not (Test-Path $buildToolsPath)) {
+            Write-Error "SSISBuild.exe not found at $buildToolsPath"
             exit 1
         }
-        if (-not (Test-Path $dtutilPath)) {
-            Write-Error "dtutil.exe not found at: $dtutilPath"
-            exit 1
-        }
-        if (-not (Get-Command $sqlcmdPath -ErrorAction SilentlyContinue)) {
-            Write-Error "sqlcmd.exe not found. Ensure SQL Server tools are installed."
-            exit 1
-        }
-        Write-Output "SSIS tools found: SSISBuild.exe at $buildToolsPath, dtutil.exe at $dtutilPath, sqlcmd.exe in PATH"
+        Write-Output "SSISBuild.exe found at: $buildToolsPath"
       shell: powershell
 
-    # Build SSIS Project using SSISBuild.exe
     - name: Build SSIS Project
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
@@ -71,48 +55,41 @@ jobs:
         $ispacPath = Join-Path $outputPath "$config\MigratingTimesheet.ispac"
         if (-not (Test-Path $ispacPath)) {
             Write-Error "Build failed - .ispac not created at: $ispacPath"
-            Get-ChildItem -Path $outputPath -Recurse
             exit 1
         }
 
         Write-Output "Build completed successfully. ISPAC path: $ispacPath"
       shell: powershell
 
-    # Deploy SSIS Package using dtutil
-    - name: Deploy SSIS Package
+    - name: Deploy ISPAC using ISDeploymentWizard
       env:
         SQL_SERVER: "LAPTOP-62JJ49T4"
-        SSIS_CATALOG: "SSISDB"
         SSIS_FOLDER: "TimesheetDeploy"
         SSIS_PROJECT: "MigratingTimesheet"
       run: |
         $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
-        $folderPath = "/SSISDB/$($env:SSIS_FOLDER)/$($env:SSIS_PROJECT)"
-        $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
 
-        # Create folder in SSISDB if it doesn't exist
-        $sqlQuery = @"
-        IF NOT EXISTS (SELECT 1 FROM SSISDB.catalog.folders WHERE name = '$($env:SSIS_FOLDER)')
-        BEGIN
-            EXEC SSISDB.catalog.create_folder @folder_name = '$($env:SSIS_FOLDER)'
-        END
-        "@
-        sqlcmd -S "$($env:SQL_SERVER)" -d "$($env:SSIS_CATALOG)" -Q "$sqlQuery" -E
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to create SSISDB folder: $($env:SSIS_FOLDER)"
+        # Find ISDeploymentWizard.exe
+        $possiblePaths = @(
+            "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe",
+            "C:\Program Files (x86)\Microsoft SQL Server\160\DTS\Binn\ISDeploymentWizard.exe",
+            "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\SSIS\160\Binn\ISDeploymentWizard.exe",
+            "C:\Program Files (x86)\Microsoft SQL Server Management Studio 20\Common7\IDE\CommonExtensions\Microsoft\SSIS\160\Binn\ISDeploymentWizard.exe"
+        )
+
+        $wizardPath = $possiblePaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+        if (-not $wizardPath) {
+            Write-Error "ISDeploymentWizard.exe not found in known locations"
             exit 1
         }
 
-        # Deploy the .ispac file
-        $dtutilArgs = @(
-            "/FILE", "$ispacPath",
-            "/DESTServer", "$($env:SQL_SERVER)",
-            "/COPY", "SQL;$folderPath",
-            "/QUIET"
-        )
-        & $dtutilPath @dtutilArgs
+        Write-Output "Using ISDeploymentWizard at: $wizardPath"
+
+        & $wizardPath /Silent /Model:Project /SourceFile:"$ispacPath" /DestinationServer:$env:SQL_SERVER /DestinationPath:"/SSISDB/$($env:SSIS_FOLDER)"
+        
         if ($LASTEXITCODE -eq 0) {
-            Write-Output "SSIS Project deployed successfully to $($env:SSIS_CATALOG)/$($env:SSIS_FOLDER)"
+            Write-Output "SSIS Project deployed successfully to SSISDB\$($env:SSIS_FOLDER)"
         } else {
             Write-Error "Deployment failed with exit code $LASTEXITCODE"
             exit 1
