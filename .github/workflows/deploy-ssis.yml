@@ -6,14 +6,6 @@ on:
       - main
   workflow_dispatch:
 
-env:
-  SQL_SERVER: "LAPTOP-62JJ49T4"  # Your SQL Server instance name
-  SSIS_CATALOG: "SSISDB"
-  SSIS_FOLDER: "TimesheetDeploy"
-  SSIS_PROJECT: "MigratingTimesheet"
-  SQL_USERNAME: "GH_DeployUser"  # The SQL auth login you created
-  BUILD_CONFIGURATION: "Development"
-
 jobs:
   deploy-ssis:
     runs-on: self-hosted
@@ -23,51 +15,57 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    # Debug workspace information
-    - name: Debug workspace
+    # Debug workspace path and user context
+    - name: Debug workspace path and user context
       run: |
-        Write-Output "Workspace: ${{ github.workspace }}"
-        Write-Output "Runner temp: ${{ runner.temp }}"
-        Get-ChildItem -Path "${{ github.workspace }}" -Recurse -Depth 1
+        Write-Output "Workspace path: ${{ github.workspace }}"
+        Write-Output "Current user: $env:USERDOMAIN\$env:USERNAME"
+        Get-ChildItem -Path "${{ github.workspace }}" -Recurse
       shell: powershell
 
     # Verify SSIS project exists
-    - name: Verify SSIS project
+    - name: Verify SSIS project exists
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet"
         if (-not (Test-Path "$projectPath\MigratingTimesheet.dtproj")) {
             Write-Error "SSIS project file not found at: $projectPath"
             exit 1
         }
-        Write-Output "SSIS project verified at: $projectPath"
+        Write-Output "SSIS project found at: $projectPath"
+        Get-ChildItem -Path $projectPath -Recurse
       shell: powershell
 
-    # Verify required tools are available
+    # Verify SSIS Tools
     - name: Verify SSIS Tools
       run: |
-        $tools = @{
-            "SSISBuild" = "C:\ssis-tools\SSISBuild.exe"
-            "dtutil" = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
-            "sqlcmd" = "sqlcmd.exe"
+        $buildToolsPath = "C:\ssis-tools"
+        $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
+        $sqlcmdPath = "sqlcmd.exe"
+        if (-not (Test-Path "$buildToolsPath\SSISBuild.exe")) {
+            Write-Error "SSISBuild.exe not found at: $buildToolsPath"
+            exit 1
         }
-        
-        foreach ($tool in $tools.GetEnumerator()) {
-            if (-not (Test-Path $tool.Value)) {
-                Write-Error "$($tool.Key) not found at: $($tool.Value)"
-                exit 1
-            }
-            Write-Output "$($tool.Key) found at: $($tool.Value)"
+        if (-not (Test-Path $dtutilPath)) {
+            Write-Error "dtutil.exe not found at: $dtutilPath"
+            exit 1
         }
+        if (-not (Get-Command $sqlcmdPath -ErrorAction SilentlyContinue)) {
+            Write-Error "sqlcmd.exe not found. Ensure SQL Server tools are installed."
+            exit 1
+        }
+        Write-Output "SSIS tools found: SSISBuild.exe at $buildToolsPath, dtutil.exe at $dtutilPath, sqlcmd.exe in PATH"
       shell: powershell
 
-    # Build SSIS project
+    # Build SSIS Project using SSISBuild.exe
     - name: Build SSIS Project
       run: |
         $projectPath = "${{ github.workspace }}\MigratingTimesheet\MigratingTimesheet.dtproj"
         $outputPath = "${{ runner.temp }}\SSISOutput"
-        $config = "${{ env.BUILD_CONFIGURATION }}"
+        $config = "Development"
 
-        New-Item -ItemType Directory -Path $outputPath -Force | Out-Null
+        if (-not (Test-Path $outputPath)) {
+            New-Item -ItemType Directory -Path $outputPath -Force
+        }
 
         & "C:\ssis-tools\SSISBuild.exe" -p:"$projectPath" -o:"$outputPath" -c:"$config" -l:DIAG
 
@@ -77,81 +75,78 @@ jobs:
             Get-ChildItem -Path $outputPath -Recurse
             exit 1
         }
-        Write-Output "Build successful. ISPAC: $ispacPath"
+
+        Write-Output "Build completed successfully. ISPAC path: $ispacPath"
       shell: powershell
 
-    # Test SQL Server connection
-    - name: Test SQL Server Connection
-      run: |
-        $query = "SELECT 'Connection successful' AS Result"
-        sqlcmd -S "${{ env.SQL_SERVER }}" -d "master" -Q "$query" `
-               -U "${{ env.SQL_USERNAME }}" -P "${{ secrets.SQL_PASSWORD }}"
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "SQL Server connection test failed"
-            exit 1
-        }
-        Write-Output "SQL Server connection verified"
-      shell: powershell
-
-    # Deploy SSIS package
+    # Deploy SSIS Package using dtutil (simplified for initial testing)
     - name: Deploy SSIS Package
       run: |
-        $ispacPath = "${{ runner.temp }}\SSISOutput\${{ env.BUILD_CONFIGURATION }}\MigratingTimesheet.ispac"
-        $folderPath = "/${{ env.SSIS_CATALOG }}/${{ env.SSIS_FOLDER }}/${{ env.SSIS_PROJECT }}"
+        # Hardcoded values for initial testing
+        $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
+        $sqlServer = "LAPTOP-62JJ49T4"
+        $catalogName = "SSISDB"
+        $folderName = "TimesheetDeploy"
+        $projectName = "MigratingTimesheet"
+        $sqlUser = "GH_DeployUser"
+        $sqlPassword = "StrongPassword123!"
         $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
 
-        # Create folder if it doesn't exist
-        $sqlQuery = @"
-        IF NOT EXISTS (SELECT 1 FROM ${{ env.SSIS_CATALOG }}.catalog.folders WHERE name = '${{ env.SSIS_FOLDER }}')
+        # 1. Create folder if it doesn't exist
+        $createFolderQuery = @"
+        IF NOT EXISTS (SELECT 1 FROM $catalogName.catalog.folders WHERE name = '$folderName')
         BEGIN
-            EXEC ${{ env.SSIS_CATALOG }}.catalog.create_folder @folder_name = '${{ env.SSIS_FOLDER }}'
-            PRINT 'Created folder: ${{ env.SSIS_FOLDER }}'
+            EXEC $catalogName.catalog.create_folder @folder_name = '$folderName'
+            PRINT 'Created folder: $folderName'
         END
         ELSE
         BEGIN
-            PRINT 'Folder already exists: ${{ env.SSIS_FOLDER }}'
+            PRINT 'Folder already exists'
         END
         "@
+
+        Write-Output "Creating SSIS folder..."
+        sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$createFolderQuery" -U "$sqlUser" -P "$sqlPassword"
         
-        sqlcmd -S "${{ env.SQL_SERVER }}" -d "${{ env.SSIS_CATALOG }}" -Q "$sqlQuery" `
-               -U "${{ env.SQL_USERNAME }}" -P "${{ secrets.SQL_PASSWORD }}"
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Failed to create SSISDB folder"
+            Write-Error "Folder creation failed"
             exit 1
         }
 
-        # Deploy the package
-        $dtutilArgs = @(
-            "/FILE", "$ispacPath",
-            "/DESTServer", "${{ env.SQL_SERVER }}",
-            "/COPY", "SQL;$folderPath",
-            "/SOURCEUSER", "${{ env.SQL_USERNAME }}",
-            "/SOURCEPASSWORD", "${{ secrets.SQL_PASSWORD }}",
-            "/QUIET"
-        )
+        # 2. Deploy the package
+        $deployPath = "/$catalogName/$folderName/$projectName"
+        Write-Output "Deploying package from $ispacPath to $deployPath..."
         
-        & $dtutilPath @dtutilArgs
-        if ($LASTEXITCODE -eq 0) {
-            Write-Output "SSIS Project deployed successfully to ${{ env.SSIS_CATALOG }}/${{ env.SSIS_FOLDER }}"
-        } else {
-            Write-Error "Deployment failed with exit code $LASTEXITCODE"
+        & $dtutilPath /FILE "$ispacPath" `
+                      /DESTServer "$sqlServer" `
+                      /COPY "SQL;$deployPath" `
+                      /SOURCEUSER "$sqlUser" `
+                      /SOURCEPASSWORD "$sqlPassword" `
+                      /QUIET
+
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "Package deployment failed"
             exit 1
         }
 
-        # Verify deployment
+        # 3. Verify deployment
         $verifyQuery = @"
-        SELECT TOP 1 name FROM ${{ env.SSIS_CATALOG }}.catalog.projects 
-        WHERE name = '${{ env.SSIS_PROJECT }}' AND folder_id = (
-            SELECT folder_id FROM ${{ env.SSIS_CATALOG }}.catalog.folders 
-            WHERE name = '${{ env.SSIS_FOLDER }}'
+        SELECT name FROM $catalogName.catalog.projects 
+        WHERE name = '$projectName' 
+        AND folder_id = (
+            SELECT folder_id FROM $catalogName.catalog.folders 
+            WHERE name = '$folderName'
         )
         "@
+
+        Write-Output "Verifying deployment..."
+        $result = sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$verifyQuery" -U "$sqlUser" -P "$sqlPassword" -h -1
         
-        $result = sqlcmd -S "${{ env.SQL_SERVER }}" -d "${{ env.SSIS_CATALOG }}" -Q "$verifyQuery" `
-                        -U "${{ env.SQL_USERNAME }}" -P "${{ secrets.SQL_PASSWORD }}" -h -1
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($result)) {
             Write-Error "Deployment verification failed"
             exit 1
         }
-        Write-Output "Verified deployed project: $result"
+
+        Write-Output "SUCCESS: Package '$projectName' deployed to $catalogName/$folderName"
+        Write-Output "Verification result: $result"
       shell: powershell
