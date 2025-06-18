@@ -39,21 +39,16 @@ jobs:
     - name: Verify SSIS Tools
       run: |
         $buildToolsPath = "C:\ssis-tools"
-        $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
         $sqlcmdPath = "sqlcmd.exe"
         if (-not (Test-Path "$buildToolsPath\SSISBuild.exe")) {
             Write-Error "SSISBuild.exe not found at: $buildToolsPath"
-            exit 1
-        }
-        if (-not (Test-Path $dtutilPath)) {
-            Write-Error "dtutil.exe not found at: $dtutilPath"
             exit 1
         }
         if (-not (Get-Command $sqlcmdPath -ErrorAction SilentlyContinue)) {
             Write-Error "sqlcmd.exe not found. Ensure SQL Server tools are installed."
             exit 1
         }
-        Write-Output "SSIS tools found: SSISBuild.exe at $buildToolsPath, dtutil.exe at $dtutilPath, sqlcmd.exe in PATH"
+        Write-Output "SSIS tools found: SSISBuild.exe at $buildToolsPath, sqlcmd.exe in PATH"
       shell: powershell
 
     # Build SSIS Project using SSISBuild.exe
@@ -79,57 +74,41 @@ jobs:
         Write-Output "Build completed successfully. ISPAC path: $ispacPath"
       shell: powershell
 
-    # Deploy SSIS Package using dtutil (simplified for initial testing)
-    - name: Deploy SSIS Package
+    # Deploy SSIS Project using catalog.deploy_project (with Windows Auth)
+    - name: Deploy SSIS Project
       run: |
-        # Hardcoded values for initial testing
         $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
         $sqlServer = "LAPTOP-62JJ49T4"
         $catalogName = "SSISDB"
         $folderName = "TimesheetDeploy"
         $projectName = "MigratingTimesheet"
-        $sqlUser = "GH_DeployUser"
-        $sqlPassword = "StrongPassword123!"
-        $dtutilPath = "C:\Program Files\Microsoft SQL Server\160\DTS\Binn\dtutil.exe"
 
-        # 1. Create folder if it doesn't exist
-        $createFolderQuery = @"
-        IF NOT EXISTS (SELECT 1 FROM $catalogName.catalog.folders WHERE name = '$folderName')
+        # Create folder if it doesn't exist and deploy project using Windows Integrated Auth (-E)
+        $deployScript = @"
+        DECLARE @folder_id bigint;
+        SELECT @folder_id = folder_id FROM $catalogName.catalog.folders WHERE name = '$folderName';
+        IF @folder_id IS NULL
         BEGIN
-            EXEC $catalogName.catalog.create_folder @folder_name = '$folderName'
-            PRINT 'Created folder: $folderName'
+            EXEC $catalogName.catalog.create_folder @folder_name = '$folderName';
+            PRINT 'Created folder: $folderName';
         END
         ELSE
         BEGIN
-            PRINT 'Folder already exists'
+            PRINT 'Folder already exists';
         END
+
+        EXEC $catalogName.deploy_project @folder_name = '$folderName', @project_name = '$projectName', @package_path = N'$ispacPath';
         "@
 
-        Write-Output "Creating SSIS folder..."
-        sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$createFolderQuery" -U "$sqlUser" -P "$sqlPassword"
+        Write-Output "Deploying SSIS project using catalog.deploy_project..."
+        sqlcmd -S $sqlServer -d $catalogName -Q $deployScript -E
         
         if ($LASTEXITCODE -ne 0) {
-            Write-Error "Folder creation failed"
+            Write-Error "SSIS project deployment failed"
             exit 1
         }
 
-        # 2. Deploy the package
-        $deployPath = "/$catalogName/$folderName/$projectName"
-        Write-Output "Deploying package from $ispacPath to $deployPath..."
-        
-        & $dtutilPath /FILE "$ispacPath" `
-                      /DESTServer "$sqlServer" `
-                      /COPY "SQL;$deployPath" `
-                      /SOURCEUSER "$sqlUser" `
-                      /SOURCEPASSWORD "$sqlPassword" `
-                      /QUIET
-
-        if ($LASTEXITCODE -ne 0) {
-            Write-Error "Package deployment failed"
-            exit 1
-        }
-
-        # 3. Verify deployment
+        # Verify deployment
         $verifyQuery = @"
         SELECT name FROM $catalogName.catalog.projects 
         WHERE name = '$projectName' 
@@ -140,8 +119,8 @@ jobs:
         "@
 
         Write-Output "Verifying deployment..."
-        $result = sqlcmd -S "$sqlServer" -d "$catalogName" -Q "$verifyQuery" -U "$sqlUser" -P "$sqlPassword" -h -1
-        
+        $result = sqlcmd -S $sqlServer -d $catalogName -Q $verifyQuery -E -h -1
+
         if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrEmpty($result)) {
             Write-Error "Deployment verification failed"
             exit 1
