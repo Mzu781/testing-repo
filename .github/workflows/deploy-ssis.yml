@@ -192,16 +192,14 @@ jobs:
             Write-Output "Folder '$folderName' exists."
           }
 
-      - name: Deploy SSIS Project (.ispac) using SQL stored procedure
+      - name: Deploy SSIS Project via stored procedure
         shell: powershell
         run: |
-          param(
-            [string]$ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac",
-            [string]$sqlServer = "LAPTOP-62JJ49T4",
-            [string]$catalogDB = "SSISDB",
-            [string]$folderName = "TimesheetDeploy",
-            [string]$projectName = "MigratingTimesheet"
-          )
+          $ispacPath = "${{ runner.temp }}\SSISOutput\Development\MigratingTimesheet.ispac"
+          $sqlServer = "LAPTOP-62JJ49T4"
+          $catalogDB = "SSISDB"
+          $folderName = "TimesheetDeploy"
+          $projectName = "MigratingTimesheet"
 
           Add-Type -AssemblyName System.Data
           Write-Output "Reading .ispac file from $ispacPath"
